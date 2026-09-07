@@ -3,42 +3,88 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sequential HTTP server</title>
+  <title>Sequential HTTP server &middot; mini web application</title>
   <link rel="icon" href="/images/favicon.png" type="image/png">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
 <main class="page">
+
   <header class="hero">
     <img src="/images/logo.png" alt="Networking lab part 2 logo" width="480" height="240">
-    <h1>A single Java process is serving this page</h1>
+    <h1>One Java process serves this page and answers its services</h1>
     <p class="lead">
-      The document, the style sheet, the script and every image below were read from disk by the
-      same socket based server and returned with their own content type and content length.
+      The document, the style sheet, the script and both images below were returned by the same
+      socket based server, each one as a separate HTTP request with its own content type. The
+      buttons call the hardcoded services asynchronously: the page never reloads.
     </p>
   </header>
 
   <section class="card">
-    <h2>Resources requested to load this page</h2>
-    <ul class="resources">
-      <li><code>GET /</code> &rarr; <code>index.html</code> (HTML)</li>
-      <li><code>GET /styles.css</code> (CSS)</li>
-      <li><code>GET /app.js</code> (JavaScript)</li>
-      <li><code>GET /images/logo.png</code> (PNG)</li>
-      <li><code>GET /images/request-flow.jpg</code> (JPEG)</li>
-    </ul>
-    <p id="js-status" class="status">JavaScript has not run yet.</p>
+    <h2>Services</h2>
+
+    <form id="greeting-form" class="service" novalidate>
+      <label for="name">Greeting service <span><code>GET /app/hello?name=...</code></span></label>
+      <div class="row">
+        <input id="name" name="name" type="text" maxlength="60" autocomplete="off"
+               placeholder="Your name" required>
+        <button type="submit">Ask for a greeting</button>
+      </div>
+    </form>
+
+    <form id="square-form" class="service" novalidate>
+      <label for="value">Square service <span><code>GET /app/square?value=...</code></span></label>
+      <div class="row">
+        <input id="value" name="value" type="number" step="any" autocomplete="off"
+               placeholder="A number, for example 7" required>
+        <button type="submit">Calculate the square</button>
+      </div>
+    </form>
+
+    <div class="service">
+      <label>Server state <span><code>GET /app/time</code> &middot; <code>GET /health</code></span></label>
+      <div class="row">
+        <button id="time-button" type="button">Ask for the server time</button>
+        <button id="health-button" type="button" class="secondary">Check health</button>
+      </div>
+    </div>
+
+    <div class="service">
+      <label for="seconds">Sequential limitation <span><code>GET /app/slow?seconds=...</code></span></label>
+      <div class="row">
+        <input id="seconds" type="number" min="0" max="20" step="1" value="8">
+        <button id="slow-button" type="button" class="secondary">Start a slow request</button>
+      </div>
+      <p class="hint">
+        Open this page in a second window while the slow request is running and ask for the server
+        time there. The browser stays responsive, but the answer only arrives when the slow request
+        has finished.
+      </p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Result</h2>
+    <p id="status" class="status" role="status" aria-live="polite">
+      No service has been called yet.
+    </p>
+    <div id="result" class="result" hidden>
+      <p id="result-headline" class="headline"></p>
+      <pre id="result-json" aria-label="Raw JSON returned by the server"></pre>
+    </div>
+    <div id="error" class="error" role="alert" hidden></div>
   </section>
 
   <section class="card">
     <h2>One request at a time</h2>
     <img src="/images/request-flow.jpg" alt="Diagram: browser, socket, handler and response"
          width="800" height="260">
-    <p>
-      Each of the requests above was completed before the next one started. The page still loads
-      quickly because the responses are small, not because the server can overlap work.
+    <p class="hint">
+      Loading this page already produced five requests: the HTML document, the style sheet, the
+      script and the two images. The server completed each one before starting the next.
     </p>
   </section>
+
 </main>
 <script src="/app.js"></script>
 </body>
