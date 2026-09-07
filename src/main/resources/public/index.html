@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sequential HTTP server</title>
+  <link rel="icon" href="/images/favicon.png" type="image/png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="page">
+  <header class="hero">
+    <img src="/images/logo.png" alt="Networking lab part 2 logo" width="480" height="240">
+    <h1>A single Java process is serving this page</h1>
+    <p class="lead">
+      The document, the style sheet, the script and every image below were read from disk by the
+      same socket based server and returned with their own content type and content length.
+    </p>
+  </header>
+
+  <section class="card">
+    <h2>Resources requested to load this page</h2>
+    <ul class="resources">
+      <li><code>GET /</code> &rarr; <code>index.html</code> (HTML)</li>
+      <li><code>GET /styles.css</code> (CSS)</li>
+      <li><code>GET /app.js</code> (JavaScript)</li>
+      <li><code>GET /images/logo.png</code> (PNG)</li>
+      <li><code>GET /images/request-flow.jpg</code> (JPEG)</li>
+    </ul>
+    <p id="js-status" class="status">JavaScript has not run yet.</p>
+  </section>
+
+  <section class="card">
+    <h2>One request at a time</h2>
+    <img src="/images/request-flow.jpg" alt="Diagram: browser, socket, handler and response"
+         width="800" height="260">
+    <p>
+      Each of the requests above was completed before the next one started. The page still loads
+      quickly because the responses are small, not because the server can overlap work.
+    </p>
+  </section>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>

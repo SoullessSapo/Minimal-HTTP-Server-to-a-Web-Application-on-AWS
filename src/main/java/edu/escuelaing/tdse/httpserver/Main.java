@@ -11,13 +11,7 @@ public final class Main {
     }
 
     public static void main(String[] args) throws IOException {
-        RequestHandler handler = request -> HttpResponse.html(200,
-                "<!DOCTYPE html><html><head><meta charset=\"UTF-8\">"
-                        + "<title>Sequential HTTP server</title></head>"
-                        + "<body><h1>Sequential HTTP server</h1>"
-                        + "<p>Handled request: " + request + "</p></body></html>");
-
-        HttpServer server = new HttpServer(DEFAULT_PORT, handler);
+        HttpServer server = new HttpServer(DEFAULT_PORT, new StaticResourceHandler());
         Runtime.getRuntime().addShutdownHook(new Thread(server::stop));
         server.start();
     }
