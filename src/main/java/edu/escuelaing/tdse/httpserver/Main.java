@@ -11,7 +11,7 @@ public final class Main {
     }
 
     public static void main(String[] args) throws IOException {
-        HttpServer server = new HttpServer(DEFAULT_PORT, new StaticResourceHandler());
+        HttpServer server = new HttpServer(DEFAULT_PORT, new WebApplication(new StaticResourceHandler()));
         Runtime.getRuntime().addShutdownHook(new Thread(server::stop));
         server.start();
     }
