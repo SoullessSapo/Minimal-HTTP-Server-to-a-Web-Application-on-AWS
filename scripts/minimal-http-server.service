@@ -1,0 +1,35 @@
+; Managed background service for the laboratory application.
+;
+; Copy this file to /etc/systemd/system/minimal-http-server.service on the EC2 instance,
+; then:  sudo systemctl daemon-reload && sudo systemctl enable --now minimal-http-server
+;
+; The unit contains no credential: the port is the only thing it configures.
+
+[Unit]
+Description=Minimal HTTP server (networking lab, part 2)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=appuser
+Group=appuser
+WorkingDirectory=/opt/minimal-http-server
+Environment=PORT=35000
+ExecStart=/usr/bin/java -jar /opt/minimal-http-server/minimal-http-server.jar
+Restart=on-failure
+RestartSec=5
+
+; Logs go to the journal: journalctl -u minimal-http-server -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=minimal-http-server
+
+; The process only needs to read its own jar and open one port.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
