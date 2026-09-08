@@ -4,6 +4,18 @@ A small web application built on top of a **socket based, deliberately sequentia
 server**. The same process serves an HTML page, a style sheet, a JavaScript client and two images,
 answers four hardcoded service URLs with JSON, and runs unchanged on a single AWS EC2 instance.
 
+> ### Deployed instance
+> **<http://ec2-34-207-78-128.compute-1.amazonaws.com:35000/>**
+> &nbsp;&nbsp;&nbsp;&nbsp;health check: <http://ec2-34-207-78-128.compute-1.amazonaws.com:35000/health>
+>
+> One `t3.micro` instance in `us-east-1`, Amazon Linux 2023, application supervised by systemd on
+> port 35000. Plain HTTP on purpose: TLS is out of the scope of this laboratory, so the browser
+> marks the site as *not secure*.
+>
+> The address answers **only while the instance is alive**. The instance is terminated as part of
+> the mandatory cleanup, after which this link stops responding — the evidence captured while it
+> was running is in [docs/evidence.md](docs/evidence.md#7-remote-execution-on-aws-ec2).
+
 ![Home page served by the Java server](docs/img/01-home-page.png)
 
 ## What problem it addresses
