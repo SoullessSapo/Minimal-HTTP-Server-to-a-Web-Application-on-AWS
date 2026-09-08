@@ -312,21 +312,41 @@ Elastic IP. Exactly one host: no load balancer, no scaling group, no second inst
 
 | Direction | Port | Purpose |
 | --- | --- | --- |
-| Inbound | 22 (SSH) | administration, restricted to the student's own public address |
+| Inbound | 22 (SSH) | administration of the instance |
 | Inbound | 35000 | the application |
 | Outbound | all | installing the Java runtime |
 
-Only the administration port and the application port are needed. Anything else that appears open
-is surplus and was removed before the submission.
+Exactly two ports are reachable from outside: the administration port and the application port. An
+inbound rule for port 443 existed at first and was removed once it was clear that nothing listens
+there — the application speaks plain HTTP on 35000, so the rule only widened the exposed surface.
+
+The guide also recommends narrowing the SSH rule to the student's own public address; that
+narrowing was not applied during this short classroom run.
 
 ---
 
-## 8. Pending evidence
+## 8. Mandatory cleanup
 
-| Evidence | How to capture it |
-| --- | --- |
-| Browser network view from EC2: the five resources with their content types | DevTools, tab Network, reload the page |
-| A service answering without reloading the page | click *Ask for a greeting*, capture the result area and the request in Network |
-| A controlled error from EC2 | invalid input, capture the `400` in Network and the message on screen |
-| The sequential limitation | two windows: slow request in one, server time in the other, capture the timeline |
-| Instance state `terminated` | EC2 console, after the cleanup of section 10 |
+![Termination of the instance](img/10-instance-terminated.png)
+
+```text
+Successfully initiated termination (deletion) of i-074faaf18883560bb
+Instance state: Shutting-down
+```
+
+The single instance of the laboratory was terminated once the evidence had been collected, so it
+stops generating charges. No Elastic IP was allocated, and the security group was left with only
+the two rules described above before being removed.
+
+From this moment on `ec2-34-207-78-128.compute-1.amazonaws.com` no longer resolves to a running
+host: the remote evidence of this page is what documents that deployment.
+
+---
+
+## 9. Evidence not captured
+
+The browser network view, the asynchronous call, the controlled error and the timeline of the
+sequential limitation were captured against the **local** server (sections 1 to 6) but not against
+the EC2 deployment, because the instance was terminated first. What documents the remote run is the
+home page loaded from the public address, the health service answered both from inside the instance
+and from the developer machine, and the systemd journal.
