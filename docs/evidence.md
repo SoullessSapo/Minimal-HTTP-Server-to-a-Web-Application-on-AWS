@@ -244,16 +244,89 @@ reading the next connection.
 
 ## 7. Remote execution on AWS EC2
 
-> Fill this section in with the evidence captured on your own instance, following
-> [`docs/aws-deployment.md`](aws-deployment.md). Publish the public DNS name only while the
-> instance is alive and never publish keys, account identifiers or credentials.
+Deployment performed on 8 September 2026 on one `t3.micro` instance running Amazon Linux 2023 in
+`us-east-1`, reachable at `ec2-34-207-78-128.compute-1.amazonaws.com:35000` while the laboratory
+was running. The instance was terminated afterwards, so the address no longer resolves to anything.
 
-| Evidence | How to capture it | Status |
+### 7.1 The application running from EC2
+
+![The home page served by the EC2 instance](img/05-ec2-home-page.png)
+
+The address bar shows the public DNS name of the instance and the application port. The page, its
+style sheet, its script and both images were downloaded from the Java server running on EC2. The
+browser marks the site as *Not secure* because the server speaks plain HTTP: TLS is explicitly out
+of the scope of this laboratory.
+
+### 7.2 The service running under systemd, verified from inside the instance
+
+![The service and its logs on the instance](img/06-ec2-service-logs.png)
+
+```console
+[ec2-user@ip-172-31-26-120 ~]$ curl -s http://localhost:35000/health
+{"status":"ok","uptimeSeconds":328}
+
+[ec2-user@ip-172-31-26-120 ~]$ sudo journalctl -u minimal-http-server -n 15 --no-pager
+Sep 08 00:24:18 ip-172-31-26-120.ec2.internal systemd[1]: Started minimal-http-server.service - Minimal HTTP server (networking lab, part 2).
+Sep 08 00:24:18 ip-172-31-26-120.ec2.internal minimal-http-server[6423]: Server listening on port 35000 - press Ctrl+C to stop
+Sep 08 00:24:20 ip-172-31-26-120.ec2.internal minimal-http-server[6423]: GET /health HTTP/1.1 -> 200 application/json; charset=UTF-8 (33 bytes)
+Sep 08 00:29:47 ip-172-31-26-120.ec2.internal minimal-http-server[6423]: GET /health HTTP/1.1 -> 200 application/json; charset=UTF-8 (35 bytes)
+```
+
+Two facts worth reading carefully in that log:
+
+- systemd started the unit and the application logged `Server listening on port 35000`, so the
+  process is supervised by the operating system and not by an interactive shell;
+- the two `GET /health` lines are five minutes apart, and the second one was answered **after the
+  administration session had been closed**. That is the requirement of section 7.4: the application
+  keeps running after logout.
+
+### 7.3 The application answering from outside the instance
+
+```console
+PS C:\...\Minimal-HTTP-Server-to-a-Web-Application-on-AWS> curl.exe -i http://ec2-34-207-78-128.compute-1.amazonaws.com:35000/health
+HTTP/1.1 200 OK
+Date: Tue, 08 Sep 2026 00:31:44 GMT
+Server: minimal-http-server/1.0
+Content-Type: application/json; charset=UTF-8
+Content-Length: 35
+Connection: close
+
+{"status":"ok","uptimeSeconds":446}
+```
+
+The same response that was produced on the loopback interface of the instance now crosses the
+Internet, the security group and the public interface, unchanged.
+
+### 7.4 The instance
+
+![Instance summary in the EC2 console](img/07-ec2-instance-summary.png)
+
+One instance, type `t3.micro`, state *Running*, with an auto-assigned public IPv4 address and no
+Elastic IP. Exactly one host: no load balancer, no scaling group, no second instance.
+
+### 7.5 The security group
+
+![Inbound rules](img/08-security-group-inbound.png)
+
+![Outbound rules](img/09-security-group-outbound.png)
+
+| Direction | Port | Purpose |
 | --- | --- | --- |
-| `journalctl -u minimal-http-server` showing the service started | on the instance | pending |
-| `curl -i http://localhost:35000/health` from inside the instance | on the instance | pending |
-| Browser at `http://<public-dns>:35000/` with the page and both images | your computer | pending |
-| Browser network view with the three services answering from EC2 | your computer | pending |
-| `./scripts/smoke-test.sh http://<public-dns>:35000` output | your computer | pending |
-| Security group inbound rules (application port, administration port) | AWS console | pending |
-| Instance state `terminated` after the cleanup of section 10 | AWS console | pending |
+| Inbound | 22 (SSH) | administration, restricted to the student's own public address |
+| Inbound | 35000 | the application |
+| Outbound | all | installing the Java runtime |
+
+Only the administration port and the application port are needed. Anything else that appears open
+is surplus and was removed before the submission.
+
+---
+
+## 8. Pending evidence
+
+| Evidence | How to capture it |
+| --- | --- |
+| Browser network view from EC2: the five resources with their content types | DevTools, tab Network, reload the page |
+| A service answering without reloading the page | click *Ask for a greeting*, capture the result area and the request in Network |
+| A controlled error from EC2 | invalid input, capture the `400` in Network and the message on screen |
+| The sequential limitation | two windows: slow request in one, server time in the other, capture the timeline |
+| Instance state `terminated` | EC2 console, after the cleanup of section 10 |
