@@ -147,6 +147,7 @@ second instance to answer exactly like the first one.
 ```text
 .
 ├── pom.xml                                  Maven build (Java 17, JUnit 5, executable jar)
+├── mvnw, mvnw.cmd, .mvn/                    Maven wrapper: builds with only a JDK installed
 ├── README.md
 ├── docs/
 │   ├── aws-deployment.md                    step by step EC2 procedure and mandatory cleanup
@@ -201,7 +202,7 @@ artifact is a single file.
 | Tool | Version | Notes |
 | --- | --- | --- |
 | JDK | 17 or newer | the build targets Java 17; developed and tested with OpenJDK 21 |
-| Apache Maven | 3.8 or newer | build, tests and packaging |
+| Apache Maven | 3.8 or newer, optional | only if you prefer it over the bundled wrapper |
 | Git | any recent version | to clone the repository |
 | curl | optional | used by `scripts/smoke-test.sh` |
 | A modern browser | optional | Chrome, Firefox or Edge, for the client and its network view |
@@ -217,8 +218,13 @@ only for the tests.
 git clone https://github.com/SoullessSapo/Minimal-HTTP-Server-to-a-Web-Application-on-AWS.git
 cd Minimal-HTTP-Server-to-a-Web-Application-on-AWS
 
-mvn -B clean package        # downloads dependencies, runs the tests and builds the jar
+./mvnw -B clean package     # Linux and macOS
+.\mvnw.cmd -B clean package  # Windows PowerShell
 ```
+
+The Maven wrapper downloads the exact Maven version this project was built with, so a local Maven
+installation is not required — only a JDK. If you already have Maven, `mvn -B clean package` does
+the same thing.
 
 The build produces the deployable artifact `target/minimal-http-server.jar`, which already contains
 the HTML page, the style sheet, the client script and the images.
@@ -287,7 +293,7 @@ HTTP status, and a server that cannot be reached is reported separately as a net
 **Automated suite** — 56 tests, unit and integration, no server has to be running:
 
 ```bash
-mvn test
+./mvnw test        # or mvn test, or .\mvnw.cmd test on Windows
 ```
 
 The integration tests start the server on an ephemeral port over real sockets and check status

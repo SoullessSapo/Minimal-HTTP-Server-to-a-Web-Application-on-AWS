@@ -3,6 +3,10 @@
 # "$'\r': command not found" when the installer runs.
 *.sh text eol=lf
 *.service text eol=lf
+mvnw text eol=lf
+
+# The Windows launcher of the Maven wrapper is a batch file and needs CRLF.
+mvnw.cmd text eol=crlf
 
 # Web resources keep LF as well, so the bytes served are identical on every platform.
 *.html text eol=lf
