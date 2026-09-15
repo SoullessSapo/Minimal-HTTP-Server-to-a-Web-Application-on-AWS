@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Maintainable application server</title>
+  <link rel="icon" href="/images/favicon.png" type="image/png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<main class="page">
+
+  <header class="hero">
+    <img src="/images/logo.png" alt="Application server logo" width="480" height="240">
+    <h1>Services registered as lambda functions</h1>
+    <p class="lead">
+      This page, its style sheet, this script and the image above were served by the framework's
+      static-file service. The buttons below call services that were registered with one line of
+      application code each, without touching the server's connection loop.
+    </p>
+  </header>
+
+  <section class="card">
+    <h2>Services</h2>
+
+    <form id="hello-form" class="service" novalidate>
+      <label for="name">Greeting <span><code>GET /hello?name=...</code></span></label>
+      <div class="row">
+        <input id="name" type="text" maxlength="60" autocomplete="off" placeholder="Your name">
+        <button type="submit">Say hello</button>
+      </div>
+      <p class="hint">The prefix comes from the <code>GREETING_PREFIX</code> environment variable.</p>
+    </form>
+
+    <form id="square-form" class="service" novalidate>
+      <label for="value">Square <span><code>GET /square?value=...</code></span></label>
+      <div class="row">
+        <input id="value" type="number" step="any" autocomplete="off" placeholder="A number, e.g. 7">
+        <button type="submit">Calculate</button>
+      </div>
+      <p class="hint">A missing or invalid value answers <code>400</code> without stopping the server.</p>
+    </form>
+
+    <div class="service">
+      <label>Constants and configuration
+        <span><code>GET /pi</code> &middot; <code>GET /greeting</code> &middot; <code>GET /config</code></span>
+      </label>
+      <div class="row">
+        <button id="pi-button" type="button">Ask for &pi;</button>
+        <button id="greeting-button" type="button" class="secondary">Greeting as JSON</button>
+        <button id="config-button" type="button" class="secondary">Show configuration</button>
+      </div>
+    </div>
+
+    <div class="service">
+      <label>Unknown resource <span><code>GET /unknown</code></span></label>
+      <div class="row">
+        <button id="notfound-button" type="button" class="ghost">Request something that does not exist</button>
+      </div>
+      <p class="hint">The framework answers <code>404 Not Found</code> and keeps serving.</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Result</h2>
+    <p id="status" class="status" role="status" aria-live="polite">No service has been called yet.</p>
+    <pre id="result" hidden></pre>
+    <div id="error" class="error" role="alert" hidden></div>
+  </section>
+
+</main>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -4,24 +4,23 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>edu.escuelaing.tdse</groupId>
-  <artifactId>minimal-http-server</artifactId>
+  <groupId>co.edu.escuelaing</groupId>
+  <artifactId>application-server</artifactId>
   <version>1.0.0</version>
   <packaging>jar</packaging>
 
-  <name>Minimal HTTP Server to a Web Application on AWS</name>
+  <name>Maintainable Application Server</name>
   <description>
-    Networking Lab - Part 2. A socket based, deliberately sequential Java HTTP server that
-    serves static resources (HTML, JavaScript, PNG, JPEG) and a small set of hardcoded
-    services, consumed asynchronously by a browser client and deployed on a single AWS EC2
-    instance.
+    A small, deliberately sequential Java web framework: developers register GET services as
+    lambda functions and configure a static resources folder, without ever touching the socket
+    loop. Includes an example application and a cloud deployment.
   </description>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <maven.compiler.release>17</maven.compiler.release>
-    <main.class>edu.escuelaing.tdse.httpserver.Main</main.class>
+    <main.class>co.edu.escuelaing.app.Application</main.class>
     <junit.version>5.10.2</junit.version>
   </properties>
 
@@ -49,8 +48,8 @@
         <version>3.2.5</version>
       </plugin>
 
-      <!-- The application has no runtime dependencies, so a plain executable jar
-           carrying the public resources is a complete deployable artifact. -->
+      <!-- The framework has no runtime dependency, so a plain executable jar carrying the
+           webroot folder is already a complete deployable artifact. -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
