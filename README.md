@@ -1,212 +1,158 @@
-# From a Minimal HTTP Server to a Web Application on AWS
+# Maintainable Application Server
 
-A small web application built on top of a **socket based, deliberately sequential Java HTTP
-server**. The same process serves an HTML page, a style sheet, a JavaScript client and two images,
-answers four hardcoded service URLs with JSON, and runs unchanged on a single AWS EC2 instance.
+A small Java **application server** — a lightweight web framework — in which a developer registers
+HTTP services as lambda functions and points the framework at a folder of static resources, without
+ever touching the code that accepts connections.
 
-> ### Deployed instance
-> The application ran at **`http://ec2-34-207-78-128.compute-1.amazonaws.com:35000/`** on one
-> `t3.micro` instance in `us-east-1`, Amazon Linux 2023, supervised by systemd on port 35000, and
-> served plain HTTP because TLS is out of the scope of this laboratory.
+```java
+import static co.edu.escuelaing.webframework.WebFramework.*;
+
+public class Application {
+    public static void main(String[] args) throws Exception {
+        staticfiles("/webroot");
+
+        get("/hello", (req, resp) -> "Hello " + req.getValueOrDefault("name", "world"));
+        get("/pi", (req, resp) -> String.valueOf(Math.PI));
+
+        start();
+    }
+}
+```
+
+![The example application](docs/img/01-home-page.png)
+
+> ### Public deployment
+> **`http://<PUBLIC-DNS-OF-YOUR-INSTANCE>:8080/`**
 >
-> **That address no longer answers:** the instance was terminated as part of the mandatory cleanup,
-> which is itself part of the laboratory. What the deployment looked like while it was running —
-> the page loaded from the public address, the health service answered from inside and from
-> outside the instance, the systemd journal, the security group and the termination itself — is
-> documented in [docs/evidence.md](docs/evidence.md#7-remote-execution-on-aws-ec2).
->
-> To run it again, on your own instance, follow [docs/aws-deployment.md](docs/aws-deployment.md).
-
-![Home page served by the Java server](docs/img/01-home-page.png)
-
-## What problem it addresses
-
-Scalability starts with understanding the baseline. Before distributing work across machines it is
-necessary to see what *one* server actually does: how many requests a single page view produces,
-where requests wait, and which assumptions make future distribution possible.
-
-This laboratory therefore keeps a limitation on purpose. The server accepts one connection at a
-time and there is no thread, no executor and no queue anywhere in the code. Everything else — a
-correct HTTP exchange, several resource types, stateless services, remote deployment — is
-implemented properly, so that the cost of the missing concurrency can be measured instead of
-guessed. Concurrency and load balancing belong to the next architectural step, after the behaviour
-of this baseline is clear.
-
-**Scope of this laboratory**
-
-| In scope | Out of scope |
-| --- | --- |
-| Correct HTTP request parsing and responses | Threads, thread pools, queues |
-| HTML, CSS, JavaScript, PNG and JPEG resources | Load balancers, autoscaling, containers |
-| Four hardcoded services returning JSON | Databases, sessions, authentication |
-| An asynchronous browser client | Frameworks, routers, dependency injection |
-| Deployment on one EC2 instance | Production grade security and TLS |
+> *Replace this line with the address of your running instance once you deploy it, following
+> [docs/cloud-deployment.md](docs/cloud-deployment.md). The platform is **AWS EC2**, the
+> application runs with `APP_ENV=production`, and `/shutdown` is therefore not published there.*
 
 ---
 
-## System metaphor and architecture
+## What problem it solves
 
-> **The application is a reception desk with a single receptionist.**
+In the previous laboratory every dynamic route was a condition inside the loop that reads sockets:
 
-- Behind the desk there is a **shelf of printed documents** ready to be handed over: the page, the
-  style sheet, the script and the two images. The receptionist does not write them, only finds
-  them, checks that the visitor is allowed to ask for them, and hands over the right one.
-- On the desk there are **four printed forms** the receptionist can fill in by hand: a greeting, a
-  square, the current time and a health note. Each one is a different form, chosen by name, not by
-  a general procedure.
-- A **visitor** (the browser) arrives with one question at a time, and after receiving an answer
-  usually discovers that it needs to ask again: the page mentions a script and two images, so four
-  more questions follow.
-- The visitor can **do something else while waiting** (the asynchronous JavaScript client), but
-  there is still only one receptionist: a second visitor waits in the queue until the first one is
-  finished, however patient or busy they are.
-- Moving the desk to another building (EC2) changes the **address and the door policy** (the
-  security group), not the number of receptionists.
+```java
+if (path.equals("/hello")) {
+    // dynamic behaviour
+} else {
+    // static file behaviour
+}
+```
 
-The metaphor maps directly onto the components:
+That works for two routes and becomes unreadable at twenty: the file that knows about TCP, HTTP
+parsing and byte counting also has to know about every business rule of the application, so every
+new service is a change to the most delicate code in the project.
 
-| Metaphor | Component | Responsibility |
+This laboratory separates the part that never changes (accepting a connection, parsing a request,
+writing a response) from the part that changes every week (which services exist and what they
+answer). The server becomes infrastructure; the application becomes a list of registrations.
+
+The server remains **sequential** on purpose: one connection is served completely before the next
+one is accepted. Threads, pools and asynchronous request handling belong to the next laboratory.
+
+---
+
+## System metaphor: an office building
+
+> **The framework is an office building, and the application is the list of offices inside it.**
+
+| In the building | In the framework | What it does |
 | --- | --- | --- |
-| Visitor | Browser + `app.js` | Renders the page, sends asynchronous requests, updates only the result area |
-| The queue at the desk | TCP accept backlog | Holds connections while the single receptionist is busy |
-| Receptionist | `HttpServer` | Accepts one connection, reads one request, writes one response, closes, repeats |
-| Understanding the question | `HttpRequest` | Parses the request line, the headers and the decoded query string |
-| Writing the answer | `HttpResponse` | Status line, headers, blank line and a body that is always bytes |
-| Choosing the form or the document | `WebApplication` | Five explicit conditions, then fall through to the shelf |
-| The shelf and its rules | `StaticResourceHandler`, `ResourcePaths`, `MediaTypes` | Finds the file, refuses unsafe paths, describes the content type |
-| Filling in a form safely | `Json` | Escapes every value that came from the visitor |
-| The building and its door | EC2 instance + security group | Host and network boundary, not architecture |
+| The entrance and its receptionist | `HttpServer` | Lets one visitor in at a time, listens to what they ask and hands back the answer. Never decides the content of the answer. |
+| The directory in the lobby | `Router` | Reads the name the visitor asked for and says which office handles it. Adding an office means adding a line to the directory, not rebuilding the entrance. |
+| The individual offices | Lambda handlers (`RouteHandler`) | Each one does a single job and knows nothing about doors, queues or the building's plumbing. |
+| The visitor's request form | `Request` | The question as the office receives it, already filled in: the path, and the values the visitor wrote in the query string. |
+| The answer sheet | `Response` | Where an office can stamp a different status or say that its answer is JSON rather than plain text. |
+| The document archive | `StaticFileService` | When the visitor asks for a document rather than for a service, the archive hands over the HTML page, the style sheet, the script or an image. |
+| The building's settings | Environment variables | Which door number the building uses (`PORT`), whether it is the real headquarters or a rehearsal (`APP_ENV`), how the receptionist greets people (`GREETING_PREFIX`). Changing them does not touch the building. |
+| The closing procedure | Graceful shutdown | When the closing order arrives, the receptionist finishes attending the visitor already at the desk, shows them out, and only then locks the front door. |
 
-### Request flow
-
-```mermaid
-flowchart LR
-    B["Browser<br/>index.html + app.js"] -->|"HTTP GET over TCP"| S["ServerSocket<br/>accept loop (one at a time)"]
-    S --> R["HttpRequest<br/>parse + decode"]
-    R --> W{"WebApplication<br/>hardcoded paths"}
-    W -->|"/app/hello, /app/square<br/>/app/time, /health, /app/slow"| SV["Service methods<br/>validate → Json"]
-    W -->|"any other path"| ST["StaticResourceHandler<br/>ResourcePaths + MediaTypes"]
-    ST --> F[("public/<br/>html · css · js · png · jpg")]
-    SV --> RS["HttpResponse<br/>status + type + length + bytes"]
-    ST --> RS
-    RS -->|"write, then close the client socket"| B
-```
-
-### Deployment view
-
-```mermaid
-flowchart LR
-    U["Browser on your computer"] -->|"HTTP :35000"| I(("Internet"))
-    I --> SG["EC2 security group<br/>inbound 35000 + admin port only"]
-    SG --> E["EC2 instance (one)<br/>Amazon Linux / Ubuntu"]
-    subgraph E
-        SD["systemd unit<br/>minimal-http-server.service"] --> J["java -jar minimal-http-server.jar<br/>one process · one thread"]
-        J --> P[("public resources<br/>packaged in the jar")]
-    end
-```
-
-One page view of this application produces five requests, and the server completes each one before
-starting the next:
-
-![One request at a time](src/main/resources/public/images/request-flow.jpg)
+The metaphor holds where it matters: a visitor who asks for an office that does not exist is told
+so politely (`404`) instead of the building collapsing, and a new office opens by adding a line to
+the directory — the entrance, the receptionist and the archive are untouched.
 
 ---
 
-## Design decisions
+## Architecture
 
-**The server stays sequential.** The accept loop runs on the calling thread and handles each
-connection completely before accepting the next one. This is the object of study: it makes the
-waiting behaviour measurable (see [the evidence](docs/evidence.md#6-the-sequential-limitation-section-62))
-and it is the limitation that the next laboratory removes. The only concession is a read timeout
-of three seconds, because browsers routinely pre-open sockets they never use and a single idle
-socket would otherwise block the whole loop.
+```mermaid
+flowchart TD
+    A["Application<br/>registers routes and configuration"] -->|"staticfiles(), get(), start()"| F["WebFramework<br/>the API the developer uses"]
+    F --> R["Router<br/>method + path → handler"]
+    F --> SF["StaticFileService<br/>the configured folder"]
+    F --> S["HttpServer<br/>accept · parse · respond"]
 
-**The routes are hardcoded on purpose.** `WebApplication` compares the path against five string
-constants. A router, an annotation scanner or a dependency injection container would hide exactly
-the mechanism the laboratory has to expose: a path selects behaviour. What a framework would later
-generalise is visible here as five `if` statements.
+    B(("Browser")) -->|"HTTP GET"| S
+    S --> P["RequestParser<br/>text → Request"]
+    P --> S
+    S -->|"1. is there a route?"| R
+    R -->|"yes"| H["Lambda handler<br/>(Request, Response) → String"]
+    S -->|"2. no: is there a file?"| SF
+    SF --> FS[("webroot/<br/>html · css · js · png")]
+    H --> S
+    S -->|"3. neither: 404"| B
+    S -->|"response"| B
+```
 
-**Content types are chosen by extension, and unknown extensions are not published.** The content
-type is the only thing that tells the browser whether bytes are a document, a script or an image.
-`MediaTypes` holds that association in one place; a file whose extension is not in the table is
-treated as if it did not exist, so the server never publishes something it cannot describe
-correctly.
-
-**Every resource is read as bytes.** Text and binary resources share one response path, and
-`Content-Length` is always the real number of bytes. Reading an image as a string would corrupt it,
-and counting characters instead of bytes would truncate any accented text.
-
-**Unsafe paths are rejected, not repaired.** The request path is percent-decoded first and
-normalised afterwards, which is the only order that catches `%2e%2e`. A segment `..` makes the
-request fail with `403` instead of being resolved, because nothing above the public area is
-publishable. When an external resources directory is configured, the resolved file is additionally
-required to stay inside it.
-
-**Untrusted values are escaped where they are written.** `Json` escapes quotes, backslashes,
-control characters and `< > &`, so a name such as `<script>` can never become active content in a
-response. The HTML error pages escape the echoed path in the same way.
-
-**The client is asynchronous, and that is not the same as a concurrent server.** `fetch` keeps the
-browser responsive and updates only the result area, so the page never reloads. It does not give
-the Java process a second execution path — the second request still waits.
-
-**Services are stateless.** Nothing is stored between requests, which is what would later allow a
-second instance to answer exactly like the first one.
-
----
-
-## Project structure
+Route resolution, in the order the server applies it:
 
 ```text
-.
-├── pom.xml                                  Maven build (Java 17, JUnit 5, executable jar)
-├── mvnw, mvnw.cmd, .mvn/                    Maven wrapper: builds with only a JDK installed
-├── README.md
-├── docs/
-│   ├── aws-deployment.md                    step by step EC2 procedure and mandatory cleanup
-│   ├── evidence.md                          screenshots, protocol traces and measurements
-│   ├── reflection.md                        answers to the eight discussion questions
-│   └── img/                                 screenshots and the captured network log
-├── scripts/
-│   ├── deploy-to-ec2.sh                     build + upload + install, from your computer
-│   ├── install-on-instance.sh               runs on the instance: runtime, artifact, service
-│   ├── minimal-http-server.service           systemd unit template
-│   ├── smoke-test.sh                        functional matrix against any running instance
-│   └── observe-sequential-limitation.sh     reproduces the waiting behaviour of section 6.2
-└── src/
-    ├── main/
-    │   ├── java/edu/escuelaing/tdse/httpserver/
-    │   │   ├── Main.java                    entry point: configuration and wiring
-    │   │   ├── ServerConfig.java            port and resources directory, arguments or environment
-    │   │   ├── HttpServer.java              sequential accept loop
-    │   │   ├── HttpRequest.java             request line, headers, decoded query string
-    │   │   ├── HttpResponse.java            status, headers and a body that is always bytes
-    │   │   ├── RequestHandler.java          contract between transport and content
-    │   │   ├── WebApplication.java          the five hardcoded paths
-    │   │   ├── StaticResourceHandler.java   the public resources area
-    │   │   ├── ResourcePaths.java           path normalisation and traversal refusal
-    │   │   ├── MediaTypes.java              extension to content type
-    │   │   ├── Json.java                    JSON writing and escaping
-    │   │   ├── Responses.java               shared 403/404/405 pages
-    │   │   └── MalformedRequestException.java
-    │   └── resources/public/                the public resources area, packaged in the jar
-    │       ├── index.html                   home page and client interface
-    │       ├── styles.css
-    │       ├── app.js                       asynchronous client
-    │       └── images/                      logo.png, request-flow.jpg, favicon.png
-    └── test/java/edu/escuelaing/tdse/httpserver/
-        ├── HttpRequestTest.java             parsing, decoding and malformed input
-        ├── ResourcePathsTest.java           index resolution and path traversal
-        ├── MediaTypesTest.java              content type association
-        ├── JsonTest.java                    escaping of untrusted values
-        ├── ServerConfigTest.java            port and directory configuration
-        ├── WebApplicationTest.java          each service, valid and invalid input
-        └── HttpServerIntegrationTest.java   the whole exchange over real sockets
+Incoming request
+        ↓
+Parse method, path and query string          RequestParser
+        ↓
+Is a route registered for that method+path?  Router
+        ↓ yes                    ↓ no
+Run the lambda            Is there a file in the static folder?   StaticFileService
+        ↓                        ↓ yes                ↓ no
+   Its return value        The file's bytes      404 Not Found
 ```
 
-Tests live in `src/test/java`, completely separated from the application source. Public resources
-live in `src/main/resources/public`, so they are packaged inside the jar and the deployable
-artifact is a single file.
+### Responsibilities of each component
+
+| Component | Responsibility | What it does **not** do |
+| --- | --- | --- |
+| `WebFramework` | The public API: `staticfiles()`, `get()`, `start()`, `stop()`. Resolves `PORT` and `STATIC_FILES_PATH` from the environment. | Parse HTTP, touch sockets or implement services. |
+| `Router` | Holds the table of registered routes and resolves a method and path to a handler. | Know what a socket or a response is. |
+| `Route` | One registration: method, path and handler, with the path normalised. | Decide anything at request time. |
+| `RouteHandler` | The functional interface every service implements — what makes a route a lambda. | Anything else; it has a single method. |
+| `Request` | The request as the application sees it: path, headers and decoded query values via `getValue()`. | Read from the network. |
+| `Response` | Status, content type and headers a handler may change. | Write to the network. |
+| `RequestParser` | Turns the bytes of a request into a `Request`, rejecting malformed input. | Decide which service answers. |
+| `HttpServer` | Accepts connections one at a time, asks the router and then the static service, writes the response, and ends its loop when asked to stop. | Contain any application rule. |
+| `StaticFileService` | Finds a file in the configured folder, as bytes, with its content type, refusing unsafe paths. | Serve dynamic content. |
+| `MediaTypes` / `ResourcePaths` | Extension to content type; path normalisation and traversal refusal. | — |
+| `Application` | Declares the static folder and the services. This is the only file that changes when the application grows. | Know anything about HTTP mechanics. |
+
+### Project structure
+
+```text
+src/main/java/
+├── co/edu/escuelaing/webframework/      the framework
+│   ├── WebFramework.java                staticfiles(), get(), start(), stop()
+│   ├── Router.java, Route.java          the routing table
+│   ├── RouteHandler.java                the functional interface of a service
+│   ├── Request.java, Response.java      the HTTP abstractions
+│   ├── RequestParser.java               text → Request
+│   ├── HttpServer.java                  the sequential accept loop
+│   ├── StaticFileService.java           the static folder
+│   ├── StaticFile.java, MediaTypes.java, ResourcePaths.java
+│   └── MalformedRequestException.java
+└── co/edu/escuelaing/app/
+    └── Application.java                 the example application
+
+src/main/resources/webroot/              the static resources
+├── index.html, styles.css, app.js
+└── images/logo.png, images/favicon.png
+
+src/test/java/co/edu/escuelaing/webframework/   45 tests, separate from the application
+
+scripts/                                 build, upload, install, verify
+docs/                                    cloud deployment and evidence
+```
 
 ---
 
@@ -214,195 +160,192 @@ artifact is a single file.
 
 | Tool | Version | Notes |
 | --- | --- | --- |
-| JDK | 17 or newer | the build targets Java 17; developed and tested with OpenJDK 21 |
-| Apache Maven | 3.8 or newer, optional | only if you prefer it over the bundled wrapper |
-| Git | any recent version | to clone the repository |
+| JDK | 17 or newer | developed and tested with OpenJDK 21 |
+| Apache Maven | 3.8 or newer, optional | the bundled wrapper works with only a JDK |
 | curl | optional | used by `scripts/smoke-test.sh` |
-| A modern browser | optional | Chrome, Firefox or Edge, for the client and its network view |
 
-No other dependency is needed: the application has **no runtime dependencies**, and JUnit 5 is used
-only for the tests.
+The framework has **no runtime dependency**; JUnit 5 is used only by the tests.
 
----
-
-## Installation and build
+## Build and run locally
 
 ```bash
 git clone https://github.com/SoullessSapo/Minimal-HTTP-Server-to-a-Web-Application-on-AWS.git
 cd Minimal-HTTP-Server-to-a-Web-Application-on-AWS
+git checkout lab-application-server
 
-./mvnw -B clean package     # Linux and macOS
-.\mvnw.cmd -B clean package  # Windows PowerShell
+./mvnw -B clean package        # Linux and macOS   (or mvn -B clean package)
+.\mvnw.cmd -B clean package    # Windows PowerShell
+
+java -jar target/application-server.jar
 ```
 
-The Maven wrapper downloads the exact Maven version this project was built with, so a local Maven
-installation is not required — only a JDK. If you already have Maven, `mvn -B clean package` does
-the same thing.
-
-The build produces the deployable artifact `target/minimal-http-server.jar`, which already contains
-the HTML page, the style sheet, the client script and the images.
-
----
-
-## How to run locally
+Then open <http://localhost:8080/>. Stop it with `Ctrl+C`, or with the shutdown route:
 
 ```bash
-java -jar target/minimal-http-server.jar                 # default port 35000
-java -jar target/minimal-http-server.jar --port 8080     # another port
-PORT=8080 java -jar target/minimal-http-server.jar       # the same, from the environment
+curl http://localhost:8080/shutdown
 ```
 
-Then open <http://localhost:35000/>.
+Running on another port, with another greeting, as if it were the cloud:
 
-| Option | Environment variable | Default | Meaning |
+```bash
+PORT=9090 APP_ENV=production GREETING_PREFIX=Hola java -jar target/application-server.jar
+```
+
+## Environment variables
+
+Nothing that depends on the deployment is written in the source code.
+
+| Variable | Purpose | Local default | Read by |
 | --- | --- | --- | --- |
-| `-p`, `--port <number>` | `PORT` | `35000` | port the server listens on |
-| `-s`, `--static-dir <path>` | `STATIC_DIR` | *(none)* | directory whose files override the packaged resources, useful to edit the page on the instance without rebuilding |
+| `PORT` | TCP port the server binds. The cloud platform imposes it. | `8080` | `WebFramework.start()` |
+| `APP_ENV` | Execution environment. Only `development` publishes the `/shutdown` route. | `development` | `Application` |
+| `GREETING_PREFIX` | Non-sensitive text used by the greeting service. | `Hello` | `Application` |
+| `STATIC_FILES_PATH` | Optional folder on disk whose files take precedence over the packaged ones. | *(none)* | `WebFramework.start()` |
 
-Stop the server with `Ctrl+C`. The shutdown hook closes the listening socket, so the port is
-released immediately and the server can be started again straight away.
-
-Running it from Maven without packaging:
-
-```bash
-mvn -q compile exec:java -Dexec.mainClass=edu.escuelaing.tdse.httpserver.Main
-```
-
----
+An unreadable `PORT` falls back to the default with a message instead of preventing the
+application from starting. **No credential, token or key is read, printed or committed.**
 
 ## How to use the application
 
-The home page is the client interface. Every action is sent with `fetch`, so the page never
-reloads: only the result area or the error area changes.
-
-| Action on the page | Request | Success | Failure |
-| --- | --- | --- | --- |
-| Type a name, *Ask for a greeting* | `GET /app/hello?name=Ana` | `200` `{"service":"greeting","name":"Ana","greeting":"Hello, Ana!"}` | empty or longer than 60 characters → `400` `{"error":"..."}` |
-| Type a number, *Calculate the square* | `GET /app/square?value=7` | `200` `{"service":"square","input":7,"square":49}` | not a number, or a result out of range → `400` |
-| *Ask for the server time* | `GET /app/time` | `200` `{"service":"time","serverTime":"2026-09-07 23:06:04","zone":"Etc/UTC","epochMillis":...}` | — |
-| *Check health* | `GET /health` | `200` `{"status":"ok","uptimeSeconds":42}` | — |
-| *Start a slow request* | `GET /app/slow?seconds=8` | `200` after the requested delay, capped at 20 seconds | non numeric input → `400` |
-
-Static resources: `/` (the page), `/styles.css`, `/app.js`, `/images/logo.png`,
-`/images/request-flow.jpg`, `/images/favicon.png`.
-
-Error behaviour of the server as a whole:
-
-| Situation | Status | Body |
+| Action on the page | Request | Answer |
 | --- | --- | --- |
-| Missing parameter, invalid number | `400` | JSON with an `error` member |
-| Malformed request line | `400` | plain text |
-| Missing file, unknown extension, unknown service path | `404` | HTML page |
-| Path that tries to leave the public area | `403` | HTML page, nothing disclosed |
-| Any method other than `GET` | `405` | HTML page and an `Allow: GET` header |
+| Type a name, *Say hello* | `GET /hello?name=Pedro` | `Hello Pedro` — the prefix comes from `GREETING_PREFIX` |
+| Type a number, *Calculate* | `GET /square?value=7` | `7 squared is 49`; a missing or invalid value answers `400` |
+| *Ask for π* | `GET /pi` | `3.141592653589793` |
+| *Greeting as JSON* | `GET /greeting?name=Ana&language=es` | `{"greeting":"Hello Ana","language":"es"}` |
+| *Show configuration* | `GET /config` | the non-sensitive configuration in use |
+| *Request something that does not exist* | `GET /unknown` | `404 Not Found` |
 
-In the browser, an invalid input is reported as a readable message, a rejected request shows its
-HTTP status, and a server that cannot be reached is reported separately as a network failure.
+Example URLs, local and in the cloud:
 
----
+```text
+# static resources
+http://localhost:8080/                      http://<public-dns>:8080/
+http://localhost:8080/styles.css            http://<public-dns>:8080/styles.css
+http://localhost:8080/app.js                http://<public-dns>:8080/app.js
+http://localhost:8080/images/logo.png       http://<public-dns>:8080/images/logo.png
 
-## How to run the tests
+# REST endpoints
+http://localhost:8080/hello?name=Pedro      http://<public-dns>:8080/hello?name=Pedro
+http://localhost:8080/pi                    http://<public-dns>:8080/pi
+http://localhost:8080/square?value=7        http://<public-dns>:8080/square?value=7
+http://localhost:8080/greeting?name=Ana&language=es
+http://localhost:8080/config                http://<public-dns>:8080/config
 
-**Automated suite** — 56 tests, unit and integration, no server has to be running:
-
-```bash
-./mvnw test        # or mvn test, or .\mvnw.cmd test on Windows
+# lifecycle: 200 locally in development, 404 in the cloud
+http://localhost:8080/shutdown              http://<public-dns>:8080/shutdown
 ```
 
-The integration tests start the server on an ephemeral port over real sockets and check status
-codes, content types, byte-exact images, path traversal, malformed requests and ten consecutive
-requests in one server run.
+## Graceful shutdown
 
-**Manual validation** — with the server running:
+The application registers the route only in development:
 
-```bash
-./scripts/smoke-test.sh                             # local
-./scripts/smoke-test.sh http://<public-dns>:35000   # against EC2
+```java
+if ("development".equalsIgnoreCase(APP_ENV)) {
+    get("/shutdown", (req, resp) -> {
+        stop();
+        return "Server will stop after this response.";
+    });
+}
 ```
 
-**Observing the sequential limitation** (section 6.2):
+`stop()` does not interrupt anything. It sets a flag that the loop reads **after** the current
+exchange is finished, so the order is always: answer the request, close the client socket, leave
+the loop, close the listening socket, print `Server stopped gracefully.` In production the route is
+never registered, so the path simply does not exist and answers `404`.
 
-```bash
-./scripts/observe-sequential-limitation.sh http://localhost:35000 6
-```
+## Cloud deployment
 
-Or, in the browser: open the page in two windows, start a slow request in the first one and
-immediately ask for the server time in the second one.
-
----
-
-## AWS deployment
-
-The full procedure — preparing the artifact, launching the instance, the security group rules,
-installing the runtime, registering the systemd service, verifying from inside and from outside the
-instance, and the **mandatory cleanup** — is documented in
-**[docs/aws-deployment.md](docs/aws-deployment.md)**.
-
-Summary:
+**Platform: AWS EC2.** One Linux instance, the jar under `/opt/application-server`, supervised by
+systemd, with `PORT`, `APP_ENV=production` and `GREETING_PREFIX` as environment variables of the
+service unit. The full procedure, the security-group rules, the verification and the mandatory
+cleanup are in **[docs/cloud-deployment.md](docs/cloud-deployment.md)**.
 
 ```bash
 export EC2_HOST=ec2-user@<public-dns>
 export EC2_KEY=~/.ssh/your-lab-key.pem      # never stored in this repository
-./scripts/deploy-to-ec2.sh                  # build, upload, install and start the service
-curl -i http://<public-dns>:35000/health
+export APP_ENV=production
+./scripts/deploy-to-ec2.sh
 ```
 
-The application runs as the systemd service `minimal-http-server`: it starts on its own, writes to
-the journal, stops cleanly and keeps running after the administration session is closed. Only the
-application port and the approved administration port are opened in the security group. No public
-address, key or credential is stored in this repository.
+## Tests
+
+```bash
+./mvnw test                                        # 45 unit and integration tests
+./scripts/smoke-test.sh                            # manual matrix against a running server
+./scripts/smoke-test.sh http://<public-dns>:8080 disabled
+```
+
+The suite covers the routing table, the parser and its query values, the static folder and its
+refusal of unsafe paths, the resolution of `PORT`, and — over real sockets — successful requests,
+`404` for an unknown resource, `400` for a malformed request, `500` for a handler that throws, ten
+consecutive requests in one run, and a shutdown route that is answered completely before the server
+leaves its loop.
+
+The results, the browser screenshots, the protocol traces and the evidence of `/shutdown` working
+in development and being absent in production are collected in
+**[docs/evidence.md](docs/evidence.md)**.
 
 ---
 
-## Evidence and results
+## Why this architecture is maintainable
 
-Screenshots of the running application, the browser network view, the protocol traces of every
-response type, the controlled errors and the measurement of the sequential limitation are collected
-in **[docs/evidence.md](docs/evidence.md)**.
+| Principle | How it appears here |
+| --- | --- |
+| **Separation of concerns** | `HttpServer` knows about sockets and never about greetings; `Application` knows about greetings and never about sockets. |
+| **Modularity** | Routing, parsing, static files and services are four components that can be read, tested and replaced on their own. |
+| **Low coupling** | Adding `/square` did not change one line of the server, the parser or the router. |
+| **High cohesion** | Each class has one reason to change: the parser when the wire format changes, the router when matching rules change. |
+| **Abstraction** | The application uses `get()` and `staticfiles()`; it never sees a `ServerSocket`. |
+| **Externalised configuration** | Port, environment and greeting come from variables, so the same artifact runs locally and in the cloud. |
+| **Extensibility** | A new service is a new registration; nothing existing is edited. |
+| **Testability** | The router and the parser are tested without a network; the server is tested on an ephemeral port. |
+| **Operational maintainability** | One jar, started the same way everywhere, with a shutdown that finishes the request in flight. |
 
-The reflection — the answers to the eight discussion questions — is in
-**[docs/reflection.md](docs/reflection.md)**.
+The transformation, in one picture:
 
----
+```text
+Before                                  After
+HTTP Server                             HTTP Server → Router → lambda handlers
+ ├── socket management                   │                      ├── /hello
+ ├── HTTP parsing                        │                      ├── /pi
+ ├── static files                        │                      └── future services
+ ├── /hello implementation               │
+ ├── /pi implementation                  └── Static File Service
+ └── every future route
+```
 
-## Known limitations
+## Verification checklist
 
-- **The server is sequential.** One connection is served at a time. A slow request delays every
-  other request, and the single accept loop is also a single point of failure.
-- **Only `GET` is implemented.** `POST`, `PUT`, `DELETE` and `HEAD` are answered with `405`.
-- **Only a small set of hardcoded paths exists.** There is no router, no path parameters and no
-  content negotiation; adding a service means adding a condition.
-- **One request per connection.** Every response closes the socket (`Connection: close`); keep
-  alive, chunked transfer encoding and compression are not implemented.
-- **No request body is read**, so uploads and form posts are not supported.
-- **No TLS, no authentication, no sessions, no persistence.** Nothing is stored between requests.
-- **A read timeout of three seconds** protects the loop from idle connections, which also means a
-  very slow client can have its connection dropped.
-- **This is not a production ready HTTP server.** It is a teaching baseline whose limitations are
-  deliberate and measured.
+| Requirement | Status |
+| --- | --- |
+| The project builds with Maven | ✅ `mvn clean package` |
+| HTML, CSS, JavaScript and an image are served | ✅ evidence §1 |
+| At least two GET lambda routes work locally | ✅ five routes, evidence §2 and §5 |
+| Query values can be read from the request | ✅ `getValue()`, evidence §5 |
+| Unknown resources return 404 | ✅ evidence §4 and §5 |
+| `PORT` is read from the environment | ✅ `WebFramework.start()`, tested |
+| At least one additional environment variable | ✅ `APP_ENV`, `GREETING_PREFIX`, `STATIC_FILES_PATH` |
+| `/shutdown` stops the local server gracefully | ✅ evidence §6 |
+| The server remains sequential | ✅ one accept loop, no thread or executor |
+| Deployed publicly to the cloud | ⏳ pending — fill in the URL above |
+| The deployment uses `APP_ENV=production` | ✅ configured by the installer |
+| Production does not expose `/shutdown` | ✅ evidence §7, verified locally with `APP_ENV=production` |
+| README with evidence, architecture and metaphor | ✅ this file |
 
----
+## Author and acknowledgments
 
-## Author and acknowledgment
+**Esteban Valencia** — Escuela Colombiana de Ingeniería Julio Garavito.
 
-**Esteban Valencia** — Networking Lab, Part 2 (TDSE, 2026-2), Escuela Colombiana de Ingeniería
-Julio Garavito.
-
-Acknowledgments and references used:
-
-- The course laboratory guide *From a Minimal HTTP Server to a Web Application on AWS*, which
-  defines the scope, the required behaviour and the assessment criteria.
-- [RFC 9110, HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110.html) and
-  [RFC 9112, HTTP/1.1](https://www.rfc-editor.org/rfc/rfc9112.html) for status codes, methods and
-  message format.
-- [MDN Web Docs](https://developer.mozilla.org/) for `fetch`, the Web API used by the client, and
-  for MIME types.
+- The course laboratory guide *Building and Deploying a Maintainable Application Server*, which
+  defines the required API, the constraints and the deliverables.
+- [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html) and
+  [RFC 9112](https://www.rfc-editor.org/rfc/rfc9112.html) for HTTP semantics and message format.
+- [MDN Web Docs](https://developer.mozilla.org/) for `fetch` and MIME types.
 - The [Java SE 17 API documentation](https://docs.oracle.com/en/java/javase/17/docs/api/) for
   `java.net.ServerSocket`, `java.net.URLDecoder` and `java.nio.file`.
-- The official AWS documentation listed at the end of
-  [docs/aws-deployment.md](docs/aws-deployment.md).
-- The build uses [Apache Maven](https://maven.apache.org/) and [JUnit 5](https://junit.org/junit5/);
-  the application itself has no runtime dependency.
-- Development assistance: the code, tests and documentation of this repository were written by the
-  author with the help of Claude Code, and every behaviour described here was executed and verified
-  locally.
+- The AWS documentation referenced at the end of
+  [docs/cloud-deployment.md](docs/cloud-deployment.md).
+- Built with [Apache Maven](https://maven.apache.org/) and [JUnit 5](https://junit.org/junit5/).
+- Development assistance: the code, tests and documentation were written by the author with the
+  help of Claude Code, and every behaviour described here was executed and verified.

@@ -1,0 +1,44 @@
+; Managed background service for the example application.
+;
+; Copy this file to /etc/systemd/system/application-server.service on the instance, then:
+;   sudo systemctl daemon-reload && sudo systemctl enable --now application-server
+;
+; Every deployment-specific value is an environment variable, never a constant in the source.
+; None of them is a secret: no credential, token or key belongs in this file.
+
+[Unit]
+Description=Maintainable application server (web framework laboratory)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=appuser
+Group=appuser
+WorkingDirectory=/opt/application-server
+
+; --- Externalised configuration -------------------------------------------------------------
+; PORT            the port the framework binds
+; APP_ENV         production, which is what keeps the /shutdown route unpublished
+; GREETING_PREFIX non-sensitive value used by the greeting service
+Environment=PORT=8080
+Environment=APP_ENV=production
+Environment=GREETING_PREFIX=Hello
+
+ExecStart=/usr/bin/java -jar /opt/application-server/application-server.jar
+Restart=on-failure
+RestartSec=5
+
+; Logs go to the journal: journalctl -u application-server -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=application-server
+
+; The process only needs to read its own jar and open one port.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
