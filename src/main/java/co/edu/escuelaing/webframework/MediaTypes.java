@@ -1,14 +1,14 @@
-package edu.escuelaing.tdse.httpserver;
+package co.edu.escuelaing.webframework;
 
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
 /**
- * Association between a file extension and the response content type.
+ * Association between a file extension and the content type of the response.
  *
  * <p>The content type is the only thing that tells the browser how to interpret the bytes it
- * receives: the same byte sequence is drawn as an image, executed as a script or rendered as a
+ * receives: the same sequence is drawn as an image, executed as a script or rendered as a
  * document depending on this single header.</p>
  */
 public final class MediaTypes {
@@ -39,12 +39,6 @@ public final class MediaTypes {
         if (dot < 0 || dot == fileName.length() - 1) {
             return Optional.empty();
         }
-        String extension = fileName.substring(dot + 1).toLowerCase(Locale.ROOT);
-        return Optional.ofNullable(BY_EXTENSION.get(extension));
-    }
-
-    /** @return true when the content type describes text rather than binary content. */
-    public static boolean isTextual(String contentType) {
-        return contentType.startsWith("text/") || contentType.startsWith("application/json");
+        return Optional.ofNullable(BY_EXTENSION.get(fileName.substring(dot + 1).toLowerCase(Locale.ROOT)));
     }
 }
